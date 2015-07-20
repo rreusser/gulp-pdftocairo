@@ -9,6 +9,8 @@ A wrapper for pdftocairo
 
 A quick wrapper for pdftocairo so that I can convert pdf files to a few different formats. Supports file streams containing either streamed or buffered data ([except no streams for raster formats since pdftocairo is buggy :(](http://stackoverflow.com/questions/17231267/pdf-to-png-in-python-with-pdf2cairo)) and since gulp says [horrible things will happen if I buffer streamed files to cover up for this](https://github.com/gulpjs/gulp/blob/master/docs/writing-a-plugin/guidelines.md).
 
+This is my first gulp plugin. Feedback on the things done wrong is welcome.
+
 ## TODO
 - Add more command line options or at least just let you pass arbitrary arguments
 
@@ -53,7 +55,7 @@ Options:
 
 ## Testing
 
-Testing is performed using a mocha/chai and a pdftocairo test stub (`test/stubs/pdftocairo.js`) that does just enough to pass the tests as if it were pdftocairo.
+Testing is performed using a mocha/chai and a pdftocairo test stub (`test/stubs/pdftocairo.js`) that does just enough to pass the tests as if it were pdftocairo. To test with the real thing, just change the `PDFTOCAIRO` variable in the `test/test.js`
 
 ## Credits
 
