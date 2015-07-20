@@ -1,151 +1,233 @@
 'use strict'
 
-var assert = require('chai').assert,
-    pdftocairo = require('../lib'),
-    fs = require('fs'),
-    stream = require('stream'),
-    mkdirp = require('mkdirp'),
-    path = require('path'),
-    promisify = require('es6-promisify')
+var assert = require('chai').assert
+  , pdftocairo = require('../lib')
+  , vinylFile = require('vinyl-file')
+  , rawBody = require('raw-body')
+  , streamifier = require('streamifier')
 
 
-mkdirp.sync(path.join(__dirname,'tmp'))
+//var PDFTOCAIRO='pdftocairo'
+var PDFTOCAIRO=__dirname+'/stubs/pdftocairo.js'
 
+function streamConvertAndCollect( input, converter, cb) {
+  input.contents = streamifier.createReadStream(input.contents)
 
-describe( "pdftocairo", function() {
+  converter.write(input)
+  converter.end()
 
-  var pdfStream,errorStream,garbageStream,errorBuffer,outputBuffer, outputStream
+  function checkComplete() {
+    if( files.length === complete) cb.apply(undefined,arguments)
+  }
+
+  var complete = 0
+  var files = []
+
+  converter.on('data',function(file) {
+    files.push(file)
+    rawBody(file.contents,function(err,buf) {
+      file.bufferedContents = buf
+      complete++
+      checkComplete(null,files)
+    })
+  }).on('end',function() {
+
+  }).on('error',function(err) {
+    cb(err.toString(),null)
+  })
+}
+
+function bufferConvertAndCollect(input, converter, cb) {
+  converter.write(input)
+  converter.end()
+
+  var files = []
+  converter.on('data',function(d) {
+    files.push(d)
+  }).on('end',function() {
+    cb(null, files)
+  }).on('error',function(err) {
+    cb(err,null)
+  })
+}
+
+function looksLikeSVG( buffer ) {
+  return buffer.toString().match(/^<svg/m)
+}
+
+function looksLikeEPS( buffer ) {
+  return buffer.toString().match(/^%!PS-Adobe-.* EPSF-.*$/m)
+}
+
+function looksLikePS( buffer ) {
+  return buffer.toString().match(/^%!PS-Adobe-.*/m)
+}
+
+function looksLikePNG( buffer ) {
+  return buffer.toString().match(/^.PNG/m)
+}
+
+function looksLikeJPG( buffer ) {
+  return buffer.toString().match(/.{0,10}JFIF/m)
+}
+
+describe( "for gulp",function() {
+
+  var nullStream
 
   beforeEach(function() {
-    pdfStream = fs.createReadStream('test/fixtures/x-plus-y.pdf')
-    garbageStream = fs.createReadStream('test/fixtures/nonsense.pdf')
+    nullStream = vinylFile.readSync( 'test/fixtures/x-plus-y.pdf' )
+    nullStream.contents = null
+  })
 
-    outputBuffer = ''
-    outputStream = new stream.Writable()
-    outputStream._write = function(chunk, encoding, done) {
-      outputBuffer += chunk.toString()
+  it("passes null through unaffected",function(done) {
+    bufferConvertAndCollect( nullStream, pdftocairo({command: PDFTOCAIRO, format: 'svg'}), function(err,files) {
+      assert.isNull( files[0].contents, 'null file contents remain null')
       done()
-    }
+    })
+  })
+})
 
-    errorBuffer = ''
-    errorStream = new stream.Writable();
-    errorStream._write = function (chunk, encoding, done) {
-      errorBuffer += chunk.toString()
-      done();
-    };
+describe( "buffered pdftocairo -> vector", function() {
+
+  var pdfStream, badPdfStream
+
+  beforeEach(function() {
+    pdfStream = vinylFile.readSync( 'test/fixtures/x-plus-y.pdf' )
+    badPdfStream = vinylFile.readSync('test/fixtures/nonsense.pdf')
+  })
+
+  it("emits an error on bad input",function(done) {
+    bufferConvertAndCollect( badPdfStream, pdftocairo({command: PDFTOCAIRO, format: 'svg'}), function(err,files) {
+      assert.match(err,/May not be a PDF file/m, "Complains that it doesn't look like a PDF")
+      done()
+    })
   })
 
   it("converts a pdf to an svg",function(done) {
-    pdftocairo( pdfStream, outputStream, {format: 'svg', stderr: errorStream}, function( err, result ) {
-      assert.isNull( err, 'callback err is null' )
-      assert.equal( result, outputStream, 'callback result is the output stream' )
-      assert.match( outputBuffer, /^<svg/m, 'output appears to be an svg document' )
+    bufferConvertAndCollect( pdfStream, pdftocairo({command: PDFTOCAIRO, format: 'svg'}), function(err,files) {
+      assert.isNull(err,'No errors')
+      assert.equal(files[0].extname, '.svg')
+      assert( looksLikeSVG( files[0].contents ), 'Looks like an SVG document' )
       done()
     })
   })
 
-  it("converts a pdf to eps",function(done) {
-    pdftocairo( pdfStream, outputStream, {format: 'eps', stderr: errorStream}, function( err, result ) {
-      assert.isNull( err, 'callback err is null' )
-      assert.equal( result, outputStream, 'callback result is the output stream' )
-      assert.match( outputBuffer, /^%!PS-Adobe-.* EPSF-.*$/m, 'output appears to be an eps document' )
+  it("converts a pdf to an eps",function(done) {
+    bufferConvertAndCollect( pdfStream, pdftocairo({command: PDFTOCAIRO, format: 'eps'}), function(err,files) {
+      assert.isNull(err,'No errors')
+      assert.equal(files[0].extname, '.eps')
+      assert( looksLikeEPS( files[0].contents ), 'Looks like an EPS document' )
       done()
     })
   })
 
-  it("converts a pdf to ps",function(done) {
-    pdftocairo( pdfStream, outputStream, {format: 'ps', stderr: errorStream}, function( err, result ) {
-      assert.isNull( err, 'callback err is null' )
-      assert.equal( result, outputStream, 'callback result is the output stream' )
-      assert.match( outputBuffer, /^%!PS-Adobe-.*$/m, 'output appears to be an eps document' )
+  it("converts a pdf to a ps",function(done) {
+    bufferConvertAndCollect( pdfStream, pdftocairo({command: PDFTOCAIRO, format: 'ps'}), function(err,files) {
+      assert.isNull(err,'No errors')
+      assert.equal(files[0].extname, '.ps')
+      assert( looksLikePS( files[0].contents ), 'Looks like a PS document' )
+      done()
+    })
+  })
+})
+
+
+
+describe( "buffered pdftocairo -> raster", function() {
+
+  var pdfStream, badPdfStream
+
+  beforeEach(function() {
+    pdfStream = vinylFile.readSync( 'test/fixtures/x-plus-y.pdf' )
+    badPdfStream = vinylFile.readSync('test/fixtures/nonsense.pdf')
+  })
+
+  it("emits an error on bad input",function(done) {
+    bufferConvertAndCollect( badPdfStream, pdftocairo({command: PDFTOCAIRO, format: 'png'}), function(err,files) {
+      assert.match(err,/May not be a PDF file/m, "Complains that it doesn't look like a PDF")
       done()
     })
   })
 
   it("converts a pdf to a png",function(done) {
-    pdftocairo( pdfStream, outputStream, {format: 'png'}, function( err, result ) {
-      assert.match(outputBuffer,/.PNG/m,'appears to be a png')
+    bufferConvertAndCollect( pdfStream, pdftocairo({command: PDFTOCAIRO, format: 'png'}), function(err,files) {
+      assert.isNull(err,'No errors')
+      assert.equal(files[0].extname, '.png')
+      assert( looksLikePNG( files[0].contents ), 'Looks like a PNG document' )
       done()
     })
   })
 
-  it("converts a pdf to jpeg",function(done) {
-    pdftocairo( pdfStream, outputStream, {format: 'jpeg', stderr: errorStream}, function( code, signal ) {
-      assert.match(outputBuffer,/.{0,10}JFIF/m,'appears to be a jpeg')
+  it("converts a pdf to a jpg",function(done) {
+    bufferConvertAndCollect( pdfStream, pdftocairo({command: PDFTOCAIRO, format: 'jpg'}), function(err,files) {
+      assert.isNull(err,'No errors')
+      assert.equal(files[0].extname, '.jpg')
+      assert( looksLikeJPG( files[0].contents ), 'Looks like a JPEG document' )
       done()
     })
   })
 
+})
 
-  it("fails on non-pdf input",function(done) {
-    pdftocairo( garbageStream, outputStream, {format: 'svg', stderr: errorStream}, function( err, result ) {
-      assert.throw(function() { if( err ) throw err }, Error, /pdftocairo: exited with status/ )
-      assert.match( errorBuffer, /Syntax Error/, 'returns a syntax error' )
+describe( "streamed pdftocairo", function() {
+
+  var pdfStream, badPdfStream
+
+  beforeEach(function() {
+    pdfStream = vinylFile.readSync( 'test/fixtures/x-plus-y.pdf' )
+    badPdfStream = vinylFile.readSync('test/fixtures/nonsense.pdf')
+  })
+
+  it("emits an error on bad input",function(done) {
+    streamConvertAndCollect( badPdfStream, pdftocairo({command: PDFTOCAIRO, format: 'svg'}), function(err,files) {
+      if( !err ) return
+      assert.match(err,/May not be a PDF file/m, "Complains that it doesn't look like a PDF")
       done()
     })
   })
 
-  it('returns true if initial call succeeded', function(done) {
-    assert( pdftocairo( pdfStream, outputStream, {format: 'svg'}, function() {
-      done()
-    }), 'returns true')
-  })
-
-  it('returns false and callback has error if no output format specified',function(done) {
-    function errCallback( err, result ) {
-      assert.throw(function() { if(err) throw err }, Error, /pdftocairo: output format not specified/)
-      done()
-    }
-
-    assert.isFalse( pdftocairo( pdfStream, outputStream, {}, errCallback ), 'returns false' )
-
-  })
-
-  it('returns false and callback has error if output format not valid',function(done) {
-
-    function errCallback( err, result ) {
-      assert.throw(function() { if(err) throw err }, Error, /pdftocairo: output format not valid/)
-      done()
-    }
-    assert.isFalse( pdftocairo( pdfStream, outputStream, {format: 'ppm'}, errCallback) )
-  })
-
-  it('accepts an error stream',function(done) {
-    pdftocairo( garbageStream, outputStream, {format: 'svg', stderr: errorStream}, function() {
-      assert.match( errorBuffer, /Error opening PDF file/m, 'outputs a syntax error' )
+  it("converts a pdf to an svg",function(done) {
+    streamConvertAndCollect( pdfStream, pdftocairo({command: PDFTOCAIRO, format: 'svg'}), function(err,files) {
+      assert.isNull(err,'No errors')
+      assert.equal(files[0].extname, '.svg')
+      assert( looksLikeSVG(files[0].bufferedContents), 'Looks like an SVG document' )
       done()
     })
   })
 
-  it('promisifies well with success',function(done) {
-    promisify(pdftocairo)( pdfStream, outputStream, {format: 'svg'} ).then(function(result) {
-      setTimeout(function() {
-        assert.equal( result,outputStream )
-        done()
+  it("converts a pdf to an eps",function(done) {
+    streamConvertAndCollect( pdfStream, pdftocairo({command: PDFTOCAIRO, format: 'eps'}), function(err,files) {
+      assert.isNull(err,'No errors')
+      assert.equal(files[0].extname, '.eps')
+      assert( looksLikeEPS(files[0].bufferedContents), 'Looks like an EPS document' )
+      done()
+    })
+  })
+
+  it("converts a pdf to an ps",function(done) {
+    streamConvertAndCollect( pdfStream, pdftocairo({command: PDFTOCAIRO, format: 'ps'}), function(err,files) {
+      assert.isNull(err,'No errors')
+      assert.equal(files[0].extname, '.ps')
+      assert( looksLikePS(files[0].bufferedContents), 'Looks like an PS document' )
+      done()
+    })
+  })
+
+  it("throws an error on streamed png converstion because pdftocairo has a bug and gulp recommends not buffering to pretend it streams.",function() {
+    assert.throws(function() {
+      streamConvertAndCollect( badPdfStream, pdftocairo({command: PDFTOCAIRO, format: 'png'}), function(err,files) {
+        assert(false)
       })
-    },function() {
-      setTimeout(function() {
-        assert(false, 'rejected when it should have resolved')
-        done()
-      })
-    })
+    }, Error, /pdftocairo is buggy/m, "Throws an error")
   })
 
-  it('promisifies well with error',function(done) {
-    promisify(pdftocairo)( garbageStream, outputStream, {format: 'svg'} ).then(function(result) {
-      // Yeesh, is this really the way to raise an exception to a level mocha is concerned about?
-      setTimeout(function() {
-        assert(false, 'resolved when it should have rejected')
-        done()
+  it("throws an error on streamed jpg converstion because pdftocairo has a bug and gulp recommends not buffering to pretend it streams.",function() {
+    assert.throws(function() {
+      streamConvertAndCollect( badPdfStream, pdftocairo({command: PDFTOCAIRO, format: 'jpg'}), function(err,files) {
+        assert(false)
       })
-    },function(err) {
-      setTimeout(function() {
-        assert(true)
-        done()
-      })
-    })
+    }, Error, /pdftocairo is buggy/m, "Throws an error")
   })
-
-
 
 })
