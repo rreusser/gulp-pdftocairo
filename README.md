@@ -1,9 +1,6 @@
-# gulp-pdftocairo
-
-[![Build Status](https://travis-ci.org/scijs/gulp-pdftocairo.svg)](https://travis-ci.org/scijs/gulp-pdftocairo) [![npm version](https://badge.fury.io/js/gulp-pdftocairo.svg)](http://badge.fury.io/js/gulp-pdftocairo) [![Dependency Status](https://david-dm.org/scijs/gulp-pdftocairo.svg)](https://david-dm.org/scijs/gulp-pdftocairo)
+# gulp-pdftocairo [![Build Status](https://travis-ci.org/scijs/gulp-pdftocairo.svg)](https://travis-ci.org/scijs/gulp-pdftocairo) [![npm version](https://badge.fury.io/js/gulp-pdftocairo.svg)](http://badge.fury.io/js/gulp-pdftocairo) [![Dependency Status](https://david-dm.org/scijs/gulp-pdftocairo.svg)](https://david-dm.org/scijs/gulp-pdftocairo)
 
 A wrapper for pdftocairo
-
 
 ## Introduction
 
