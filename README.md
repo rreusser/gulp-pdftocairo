@@ -32,7 +32,7 @@ gulp.task('to-png', function() {
 To use this, you'll need `pdftocairo` installed, which can probably be installed with a package manager. Currently left as an exercise for the reader.
 
 ```sh
-$ npm install gulp-pdtocairo
+$ npm install gulp-pdftocairo
 ```
 
 
